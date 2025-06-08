@@ -1,0 +1,3 @@
+-r ./shared-models/requirements.txt
+-e ./shared-models
+requests==2.31.0
