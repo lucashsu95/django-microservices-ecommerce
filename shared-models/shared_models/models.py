@@ -1,5 +1,4 @@
 from django.db import models
-from django.contrib.auth.models import AbstractUser
 
 class BaseModel(models.Model):
     """共用基礎模型"""

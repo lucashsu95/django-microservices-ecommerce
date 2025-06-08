@@ -63,7 +63,7 @@ docker-compose exec order-service python manage.py migrate
 
 專案提供兩種方式建立測試資料：
 1. Python 腳本: `populate_data.py`
-2. Bash 命令: fake-data.md
+2. Bash 命令: [fake-data.md](./docs/fake-data.md)
 
 ### API 測試範例
 1. 新增商品類別
@@ -110,3 +110,10 @@ curl -X POST http://localhost:8002/api/orders/create/ \
 ```bash
 curl http://localhost:8002/api/orders/
 ```
+
+
+## Q&A
+
+- [Django REST Framework 中的特定方法](./docs/Django%20REST%20Framework%20中的特定方法.md)
+- [DRF 是什麼](./docs/DRF%20是什麼.md)
+- [create() 方法如何調用 get_serializer_class](./docs/create()%20方法如何調用%20get_serializer_class.md)
