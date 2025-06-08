@@ -5,100 +5,90 @@ from django.db import transaction
 from .models import Order, OrderItem
 from .serializers import OrderSerializer, OrderCreateSerializer
 from .services import ProductService
+from shared_models.serializers import BaseResponseSerializer
 import uuid
 
-class OrderListView(generics.ListAPIView):
+class OrderListView(generics.ListCreateAPIView):
     queryset = Order.objects.all().order_by('-created_at')
     serializer_class = OrderSerializer
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        return BaseResponseSerializer.success(data=serializer.data, message="訂單列表查詢成功")
+    
+    def create(self, request, *args, **kwargs):
+        """建立新訂單"""
+        serializer = OrderCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            error_message = self._extract_error_message(serializer.errors)
+            return BaseResponseSerializer.fail(
+                message=error_message,
+                error_code="VALIDATION_ERROR",
+                data=None
+            )
+        
+        validated_data = serializer.validated_data
+        
+        try:
+            with transaction.atomic():
+                # 計算總金額
+                total_amount = sum(item['subtotal'] for item in validated_data['items'])
+                
+                # 建立訂單
+                order = Order.objects.create(
+                    order_number=f"ORD-{uuid.uuid4().hex[:8].upper()}",
+                    customer_name=validated_data['customer_name'],
+                    customer_email=validated_data['customer_email'],
+                    customer_phone=validated_data['customer_phone'],
+                    shipping_address=validated_data['shipping_address'],
+                    notes=validated_data.get('notes', ''),
+                    total_amount=total_amount
+                )
+                
+                # 建立訂單項目
+                for item_data in validated_data['items']:
+                    OrderItem.objects.create(order=order, **item_data)
+                
+                return BaseResponseSerializer.created(
+                    data=OrderSerializer(order).data,
+                    message="訂單建立成功"
+                )
+                
+        except Exception as e:
+            return BaseResponseSerializer.fail(
+                message=f'訂單建立失敗: {str(e)}',
+                error_code="ORDER_CREATION_FAILED",
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    def _extract_error_message(self, errors):
+        """提取第一個錯誤訊息"""
+        if isinstance(errors, dict):
+            for field, messages in errors.items():
+                if isinstance(messages, list) and messages:
+                    if field == 'non_field_errors':
+                        return messages[0]
+                    return messages[0]
+                elif isinstance(messages, str):
+                    return messages
+        elif isinstance(errors, list) and errors:
+            return errors[0]
+        return "資料驗證失敗"
 
 class OrderDetailView(generics.RetrieveAPIView):
     queryset = Order.objects.all()
     serializer_class = OrderSerializer
     
     def retrieve(self, request, *args, **kwargs):
-        order = self.get_object()
-        return Response({
-            'success': True,
-            'message': '訂單查詢成功',
-            'data': self.get_serializer(order).data
-        })
-
-@api_view(['POST'])
-def create_order(request):
-    """建立新訂單"""
-    serializer = OrderCreateSerializer(data=request.data)
-    if not serializer.is_valid():
-        return Response({
-            'success': False,
-            'message': '資料驗證失敗',
-            'errors': serializer.errors
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    validated_data = serializer.validated_data
-    
-    try:
-        with transaction.atomic():
-            # 1. 驗證商品並獲取資訊
-            order_items_data = []
-            total_amount = 0
-            
-            for item_data in validated_data['items']:
-                product_id = int(item_data['product_id'])
-                quantity = int(item_data['quantity'])
-                
-                # 檢查商品存在性和庫存
-                product_info = ProductService.get_product_info(product_id)
-                if not product_info or not product_info.get('success'):
-                    return Response({
-                        'success': False,
-                        'message': f'商品 ID {product_id} 不存在'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                
-                product_data = product_info['data']
-                if not ProductService.check_stock_availability(product_id, quantity):
-                    return Response({
-                        'success': False,
-                        'message': f'商品 {product_data["name"]} 庫存不足'
-                    }, status=status.HTTP_400_BAD_REQUEST)
-                
-                unit_price = float(product_data['price'])
-                subtotal = unit_price * quantity
-                total_amount += subtotal
-                
-                order_items_data.append({
-                    'product_id': product_id,
-                    'product_name': product_data['name'],
-                    'unit_price': unit_price,
-                    'quantity': quantity,
-                    'subtotal': subtotal
-                })
-            
-            # 2. 建立訂單
-            order = Order.objects.create(
-                order_number=f"ORD-{uuid.uuid4().hex[:8].upper()}",
-                customer_name=validated_data['customer_name'],
-                customer_email=validated_data['customer_email'],
-                customer_phone=validated_data['customer_phone'],
-                shipping_address=validated_data['shipping_address'],
-                notes=validated_data.get('notes', ''),
-                total_amount=total_amount
+        try:
+            order = self.get_object()
+            return BaseResponseSerializer.success(
+                data=self.get_serializer(order).data,
+                message="訂單查詢成功"
             )
-            
-            # 3. 建立訂單項目
-            for item_data in order_items_data:
-                OrderItem.objects.create(order=order, **item_data)
-            
-            return Response({
-                'success': True,
-                'message': '訂單建立成功',
-                'data': OrderSerializer(order).data
-            }, status=status.HTTP_201_CREATED)
-            
-    except Exception as e:
-        return Response({
-            'success': False,
-            'message': f'訂單建立失敗: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Order.DoesNotExist:
+            return BaseResponseSerializer.not_found(message="訂單不存在")
 
 @api_view(['PATCH'])
 def update_order_status(request, pk):
@@ -106,23 +96,19 @@ def update_order_status(request, pk):
     try:
         order = Order.objects.get(pk=pk)
     except Order.DoesNotExist:
-        return Response({
-            'success': False,
-            'message': '訂單不存在'
-        }, status=status.HTTP_404_NOT_FOUND)
+        return BaseResponseSerializer.not_found(message="訂單不存在")
     
     new_status = request.data.get('status')
     if new_status not in dict(Order.STATUS_CHOICES):
-        return Response({
-            'success': False,
-            'message': '無效的訂單狀態'
-        }, status=status.HTTP_400_BAD_REQUEST)
+        return BaseResponseSerializer.fail(
+            message="無效的訂單狀態",
+            error_code="INVALID_STATUS"
+        )
     
     order.status = new_status
     order.save()
     
-    return Response({
-        'success': True,
-        'message': '訂單狀態更新成功',
-        'data': OrderSerializer(order).data
-    })
+    return BaseResponseSerializer.success(
+        data=OrderSerializer(order).data,
+        message="訂單狀態更新成功"
+    )

@@ -117,7 +117,7 @@ def create_orders():
     
     print("\nCreating orders...")
     for order in orders:
-        response = requests.post(f"{BASE_URL_ORDER}/orders/create/", json=order)
+        response = requests.post(f"{BASE_URL_ORDER}/orders/", json=order)
         if response.status_code == 201:
             print(f"✅ Created order for: {order['customer_name']}")
         else:

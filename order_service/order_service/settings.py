@@ -71,8 +71,8 @@ REST_FRAMEWORK = {
 
 CORS_ALLOW_ALL_ORIGINS = True
 
-# 商品服務 URL
 PRODUCT_SERVICE_URL = os.environ.get('PRODUCT_SERVICE_URL', 'http://product-service:8000')
+
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # 靜態文件設定
@@ -82,3 +82,5 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 # 媒體文件設定（如果需要的話）
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+APPEND_SLASH = False

@@ -19,6 +19,12 @@ class ProductCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = ['name', 'description', 'price', 'stock_quantity', 'category']
+        extra_kwargs = {
+            'name': {'error_messages': {'required': '商品名稱為必填欄位'}},
+            'price': {'error_messages': {'required': '商品價格為必填欄位'}},
+            'stock_quantity': {'error_messages': {'required': '庫存數量為必填欄位'}},
+            'category': {'error_messages': {'required': '商品類別為必填欄位'}},
+        }
         # 只包含建立時需要的欄位
     
     def validate_name(self, value):
